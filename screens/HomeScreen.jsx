@@ -9,7 +9,8 @@ import {
   StatusBar,
   Animated,
   Easing,
-  Platform
+  Platform,
+  Image
 } from 'react-native';
 
 export default class HomeScreen extends Component {
@@ -17,10 +18,10 @@ export default class HomeScreen extends Component {
     super(props);
     this.state = {
       posts: [],
-      loading: true
+      loading: true,
+      imagesLoaded: false
     };
     
-    // Animations
     this.fadeAnim = new Animated.Value(0);
     this.scaleAnim = new Animated.Value(0.95);
     this.itemAnimations = {};
@@ -30,61 +31,79 @@ export default class HomeScreen extends Component {
     this.fetchPosts();
   }
   
-  fetchPosts = () => {
-    fetch('https://jsonplaceholder.typicode.com/posts')
-      .then(res => res.json())
-      .then(data => {
-        this.setState({ posts: data, loading: false }, () => {
-          // Animation globale après chargement
-          Animated.parallel([
-            Animated.timing(this.fadeAnim, {
-              toValue: 1,
-              duration: 600,
-              useNativeDriver: true,
-              easing: Easing.out(Easing.cubic)
-            }),
-            Animated.timing(this.scaleAnim, {
-              toValue: 1,
-              duration: 600,
-              useNativeDriver: true,
-              easing: Easing.out(Easing.cubic)
-            })
-          ]).start();
-          
-          // Préparer les animations pour chaque élément
-          data.forEach((item, index) => {
-            const fadeAnim = new Animated.Value(0);
-            const translateY = new Animated.Value(20);
-            
-            this.itemAnimations[item.id] = { fadeAnim, translateY };
-            
-            // Animation séquentielle
-            const delay = 100 + index * 80;
-            Animated.parallel([
-              Animated.timing(fadeAnim, {
-                toValue: 1,
-                duration: 500,
-                delay,
-                useNativeDriver: true,
-                easing: Easing.out(Easing.cubic)
-              }),
-              Animated.timing(translateY, {
-                toValue: 0,
-                duration: 500,
-                delay,
-                useNativeDriver: true,
-                easing: Easing.out(Easing.cubic)
-              })
-            ]).start();
-          });
-        });
-      })
-      .catch(err => {
-        console.error(err);
-        this.setState({ loading: false });
-      });
+  fetchRandomImage = () => {
+    const width = 400;
+    const height = 300;
+    const categories = ['nature', 'technology', 'city', 'people', 'food'];
+    const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+    return `https://picsum.photos/seed/${randomCategory}-${Math.floor(Math.random() * 10000)}/${width}/${height}`;
   }
-  
+
+  fetchPosts = async () => {
+    try {
+      const postsResponse = await fetch('https://jsonplaceholder.typicode.com/posts');
+      const postsData = await postsResponse.json();
+      const limitedPosts = postsData.slice(0, 20);
+      
+      // Ajout des URLs d'images directement (sans attendre le chargement)
+      const postsWithImages = limitedPosts.map(post => ({
+        ...post,
+        imageUrl: this.fetchRandomImage()
+      }));
+      
+      this.setState({ 
+        posts: postsWithImages, 
+        loading: false,
+        imagesLoaded: true
+      }, this.startAnimations);
+    } catch (err) {
+      console.error(err);
+      this.setState({ loading: false });
+    }
+  }
+
+  startAnimations = () => {
+    Animated.parallel([
+      Animated.timing(this.fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic)
+      }),
+      Animated.timing(this.scaleAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic)
+      })
+    ]).start();
+    
+    this.state.posts.forEach((item, index) => {
+      const fadeAnim = new Animated.Value(0);
+      const translateY = new Animated.Value(20);
+      
+      this.itemAnimations[item.id] = { fadeAnim, translateY };
+      
+      const delay = 100 + index * 80;
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          delay,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic)
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 500,
+          delay,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.cubic)
+        })
+      ]).start();
+    });
+  }
+
   handlePressIn = (itemId) => {
     const { translateY } = this.itemAnimations[itemId] || {};
     if (translateY) {
@@ -109,7 +128,7 @@ export default class HomeScreen extends Component {
     }
   }
 
-  renderItem = ({ item, index }) => {
+  renderItem = ({ item }) => {
     const animations = this.itemAnimations[item.id] || {};
     const { fadeAnim = new Animated.Value(1), translateY = new Animated.Value(0) } = animations;
     
@@ -127,6 +146,12 @@ export default class HomeScreen extends Component {
           onPressIn={() => this.handlePressIn(item.id)}
           onPressOut={() => this.handlePressOut(item.id)}
         >
+          <Image 
+            source={{ uri: item.imageUrl }} 
+            style={styles.cardImage}
+            resizeMode="cover"
+            onError={(e) => console.log('Erreur de chargement de l\'image:', e.nativeEvent.error)}
+          />
           <View style={styles.cardContent}>
             <View style={styles.cardHeader}>
               <View style={styles.avatar}>
@@ -148,7 +173,7 @@ export default class HomeScreen extends Component {
   };
 
   render() {
-    const { loading, posts } = this.state;
+    const { loading } = this.state;
 
     if (loading) {
       return (
@@ -171,7 +196,7 @@ export default class HomeScreen extends Component {
       >
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <FlatList
-          data={posts}
+          data={this.state.posts}
           keyExtractor={(item) => item.id.toString()}
           renderItem={this.renderItem}
           contentContainerStyle={styles.listContainer}
@@ -188,7 +213,7 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1, 
     backgroundColor: '#F8F9FA',
-    paddingTop: 8,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   listContainer: {
     padding: 16,
@@ -207,6 +232,11 @@ const styles = StyleSheet.create({
     borderWidth: Platform.OS === 'ios' ? 0 : 0.5,
     borderColor: 'rgba(0,0,0,0.04)',
   },
+  cardImage: {
+    width: '100%',
+    height: 180,
+    backgroundColor: '#e1e4e8', // Couleur de fond en attendant le chargement
+  },
   cardContent: {
     padding: 16,
   },
@@ -223,11 +253,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
-    shadowColor: '#FF6B6B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 2,
   },
   avatarText: {
     color: '#fff',
@@ -239,14 +264,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    letterSpacing: 0.2,
   },
   cardBody: {
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
     marginBottom: 12,
-    letterSpacing: 0.1,
   },
   cardFooter: {
     flexDirection: 'row',
