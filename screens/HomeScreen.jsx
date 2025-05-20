@@ -1,89 +1,68 @@
-import React, { Component } from 'react';
-import { 
-  View, 
-  Text, 
-  FlatList, 
-  TouchableOpacity, 
-  ActivityIndicator, 
-  StyleSheet,
-  StatusBar,
-  Animated,
-  Easing,
-  Platform,
-  Image
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet,
+  StatusBar, Animated, Easing, Platform, Image
 } from 'react-native';
 
-export default class HomeScreen extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      posts: [],
-      loading: true,
-      imagesLoaded: false
-    };
-    
-    this.fadeAnim = new Animated.Value(0);
-    this.scaleAnim = new Animated.Value(0.95);
-    this.itemAnimations = {};
-  }
+export default function HomeScreen({ navigation }) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [favorites, setFavorites] = useState([]);
 
-  componentDidMount() {
-    this.fetchPosts();
-  }
-  
-  fetchRandomImage = () => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const itemAnimations = useRef({});
+
+  useEffect(() => {
+    fetchPosts();
+  }, []);
+
+  const fetchRandomImage = () => {
     const width = 400;
     const height = 300;
     const categories = ['nature', 'technology', 'city', 'people', 'food'];
     const randomCategory = categories[Math.floor(Math.random() * categories.length)];
     return `https://picsum.photos/seed/${randomCategory}-${Math.floor(Math.random() * 10000)}/${width}/${height}`;
-  }
+  };
 
-  fetchPosts = async () => {
+  const fetchPosts = async () => {
     try {
-      const postsResponse = await fetch('https://jsonplaceholder.typicode.com/posts');
-      const postsData = await postsResponse.json();
-      const limitedPosts = postsData.slice(0, 20);
-      
-      // Ajout des URLs d'images directement (sans attendre le chargement)
-      const postsWithImages = limitedPosts.map(post => ({
+      const response = await fetch('https://jsonplaceholder.typicode.com/posts');
+      const data = await response.json();
+      const limitedPosts = data.slice(0, 20).map(post => ({
         ...post,
-        imageUrl: this.fetchRandomImage()
+        imageUrl: fetchRandomImage()
       }));
-      
-      this.setState({ 
-        posts: postsWithImages, 
-        loading: false,
-        imagesLoaded: true
-      }, this.startAnimations);
+      setPosts(limitedPosts);
+      setLoading(false);
+      startAnimations(limitedPosts);
     } catch (err) {
       console.error(err);
-      this.setState({ loading: false });
+      setLoading(false);
     }
-  }
+  };
 
-  startAnimations = () => {
+  const startAnimations = (postList) => {
     Animated.parallel([
-      Animated.timing(this.fadeAnim, {
+      Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 600,
         useNativeDriver: true,
         easing: Easing.out(Easing.cubic)
       }),
-      Animated.timing(this.scaleAnim, {
+      Animated.timing(scaleAnim, {
         toValue: 1,
         duration: 600,
         useNativeDriver: true,
         easing: Easing.out(Easing.cubic)
       })
     ]).start();
-    
-    this.state.posts.forEach((item, index) => {
+
+    postList.forEach((item, index) => {
       const fadeAnim = new Animated.Value(0);
       const translateY = new Animated.Value(20);
-      
-      this.itemAnimations[item.id] = { fadeAnim, translateY };
-      
+      itemAnimations.current[item.id] = { fadeAnim, translateY };
+
       const delay = 100 + index * 80;
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -102,56 +81,28 @@ export default class HomeScreen extends Component {
         })
       ]).start();
     });
-  }
+  };
 
-  handlePressIn = (itemId) => {
-    const { translateY } = this.itemAnimations[itemId] || {};
-    if (translateY) {
-      Animated.spring(translateY, {
-        toValue: 5,
-        friction: 5,
-        tension: 100,
-        useNativeDriver: true
-      }).start();
-    }
-  }
-  
-  handlePressOut = (itemId) => {
-    const { translateY } = this.itemAnimations[itemId] || {};
-    if (translateY) {
-      Animated.spring(translateY, {
-        toValue: 0,
-        friction: 5,
-        tension: 100,
-        useNativeDriver: true
-      }).start();
-    }
-  }
+  const toggleFavorite = (id) => {
+    setFavorites(prev =>
+      prev.includes(id) ? prev.filter(favId => favId !== id) : [...prev, id]
+    );
+  };
 
-  renderItem = ({ item }) => {
-    const animations = this.itemAnimations[item.id] || {};
+  const renderItem = ({ item }) => {
+    const animations = itemAnimations.current[item.id] || {};
     const { fadeAnim = new Animated.Value(1), translateY = new Animated.Value(0) } = animations;
-    
+
+    const isFavorite = favorites.includes(item.id);
+
     return (
-      <Animated.View
-        style={{
-          opacity: fadeAnim,
-          transform: [{ translateY }]
-        }}
-      >
-        <TouchableOpacity 
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }] }}>
+        <TouchableOpacity
           style={styles.card}
-          onPress={() => this.props.navigation.navigate('Detail', { postId: item.id })}
+          onPress={() => navigation.navigate('Detail', { postId: item.id })}
           activeOpacity={0.7}
-          onPressIn={() => this.handlePressIn(item.id)}
-          onPressOut={() => this.handlePressOut(item.id)}
         >
-          <Image 
-            source={{ uri: item.imageUrl }} 
-            style={styles.cardImage}
-            resizeMode="cover"
-            onError={(e) => console.log('Erreur de chargement de l\'image:', e.nativeEvent.error)}
-          />
+          <Image source={{ uri: item.imageUrl }} style={styles.cardImage} />
           <View style={styles.cardContent}>
             <View style={styles.cardHeader}>
               <View style={styles.avatar}>
@@ -164,7 +115,11 @@ export default class HomeScreen extends Component {
               <View style={styles.cardMeta}>
                 <Text style={styles.cardMetaText}>Article #{item.id}</Text>
               </View>
-              <Text style={styles.readMore}>Lire plus</Text>
+              <TouchableOpacity onPress={() => toggleFavorite(item.id)}>
+                <Text style={{ color: isFavorite ? '#FFD700' : '#FF6B6B', fontWeight: 'bold' }}>
+                  {isFavorite ? '★ Favori' : '☆ Ajouter'}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </TouchableOpacity>
@@ -172,46 +127,39 @@ export default class HomeScreen extends Component {
     );
   };
 
-  render() {
-    const { loading } = this.state;
-
-    if (loading) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FF6B6B" />
-          <Text style={styles.loadingText}>Chargement des articles...</Text>
-        </View>
-      );
-    }
-
+  if (loading) {
     return (
-      <Animated.View 
-        style={[
-          styles.container,
-          {
-            opacity: this.fadeAnim,
-            transform: [{ scale: this.scaleAnim }]
-          }
-        ]}
-      >
-        <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-        <FlatList
-          data={this.state.posts}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={this.renderItem}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          onRefresh={this.fetchPosts}
-          refreshing={loading}
-        />
-      </Animated.View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FF6B6B" />
+        <Text style={styles.loadingText}>Chargement des articles...</Text>
+      </View>
     );
   }
+
+  return (
+    <Animated.View
+      style={[
+        styles.container,
+        { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }
+      ]}
+    >
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+      <FlatList
+        data={posts}
+        keyExtractor={(item) => item.id.toString()}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContainer}
+        showsVerticalScrollIndicator={false}
+        onRefresh={fetchPosts}
+        refreshing={loading}
+      />
+    </Animated.View>
+  );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
+  container: {
+    flex: 1,
     backgroundColor: '#F8F9FA',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
@@ -235,7 +183,7 @@ const styles = StyleSheet.create({
   cardImage: {
     width: '100%',
     height: 180,
-    backgroundColor: '#e1e4e8', // Couleur de fond en attendant le chargement
+    backgroundColor: '#e1e4e8',
   },
   cardContent: {
     padding: 16,
@@ -286,11 +234,6 @@ const styles = StyleSheet.create({
   cardMetaText: {
     fontSize: 12,
     color: '#888',
-  },
-  readMore: {
-    fontSize: 14,
-    color: '#FF6B6B',
-    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,
